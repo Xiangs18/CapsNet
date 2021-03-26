@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 # Available device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def squash(x, dim=-1):
@@ -18,10 +18,12 @@ class PrimaryCaps(nn.Module):
         super(PrimaryCaps, self).__init__()
 
         # Each conv unit stands for a single capsule.
-        self.conv = nn.Conv2d(in_channels=in_channels,
-                              out_channels=out_channels * num_conv_units,
-                              kernel_size=kernel_size,
-                              stride=stride)
+        self.conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels * num_conv_units,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
         self.out_channels = out_channels
 
     def forward(self, x):
@@ -54,8 +56,10 @@ class DigitCaps(nn.Module):
         self.out_dim = out_dim
         self.num_routing = num_routing
         self.device = device
-        self.W = nn.Parameter(0.01 * torch.randn(1, out_caps, in_caps, out_dim, in_dim),
-                              requires_grad=True)
+        self.W = nn.Parameter(
+            0.01 * torch.randn(1, out_caps, in_caps, out_dim, in_dim),
+            requires_grad=True,
+        )
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -109,18 +113,14 @@ class CapsNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
         # Primary capsule
-        self.primary_caps = PrimaryCaps(num_conv_units=32,
-                                        in_channels=256,
-                                        out_channels=8,
-                                        kernel_size=9,
-                                        stride=2)
+        self.primary_caps = PrimaryCaps(
+            num_conv_units=32, in_channels=256, out_channels=8, kernel_size=9, stride=2
+        )
 
         # Digit capsule
-        self.digit_caps = DigitCaps(in_dim=8,
-                                    in_caps=32 * 6 * 6,
-                                    out_caps=10,
-                                    out_dim=16,
-                                    num_routing=3)
+        self.digit_caps = DigitCaps(
+            in_dim=8, in_caps=32 * 6 * 6, out_caps=10, out_dim=16, num_routing=3
+        )
 
         # Reconstruction layer
         self.decoder = nn.Sequential(
@@ -129,7 +129,8 @@ class CapsNet(nn.Module):
             nn.Linear(512, 1024),
             nn.ReLU(inplace=True),
             nn.Linear(1024, 784),
-            nn.Sigmoid())
+            nn.Sigmoid(),
+        )
 
     def forward(self, x):
         out = self.relu(self.conv(x))
@@ -138,11 +139,17 @@ class CapsNet(nn.Module):
 
         # Shape of logits: (batch_size, out_capsules)
         logits = torch.norm(out, dim=-1)
-        pred = torch.eye(10).to(device).index_select(dim=0, index=torch.argmax(logits, dim=1))
+        pred = (
+            torch.eye(10)
+            .to(device)
+            .index_select(dim=0, index=torch.argmax(logits, dim=1))
+        )
 
         # Reconstruction
         batch_size = out.shape[0]
-        reconstruction = self.decoder((out * pred.unsqueeze(2)).contiguous().view(batch_size, -1))
+        reconstruction = self.decoder(
+            (out * pred.unsqueeze(2)).contiguous().view(batch_size, -1)
+        )
 
         return logits, reconstruction
 
@@ -156,16 +163,20 @@ class CapsuleLoss(nn.Module):
         self.lower = lower_bound
         self.lmda = lmda
         self.reconstruction_loss_scalar = 5e-4
-        self.mse = nn.MSELoss(reduction='sum')
+        self.mse = nn.MSELoss(reduction="sum")
 
     def forward(self, images, labels, logits, reconstructions):
         # Shape of left / right / labels: (batch_size, num_classes)
         left = (self.upper - logits).relu() ** 2  # True negative
         right = (logits - self.lower).relu() ** 2  # False positive
-        margin_loss = torch.sum(labels * left) + self.lmda * torch.sum((1 - labels) * right)
+        margin_loss = torch.sum(labels * left) + self.lmda * torch.sum(
+            (1 - labels) * right
+        )
 
         # Reconstruction loss
-        reconstruction_loss = self.mse(reconstructions.contiguous().view(images.shape), images)
+        reconstruction_loss = self.mse(
+            reconstructions.contiguous().view(images.shape), images
+        )
 
         # Combine two losses
         return margin_loss + self.reconstruction_loss_scalar * reconstruction_loss
